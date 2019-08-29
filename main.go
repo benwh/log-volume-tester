@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -30,21 +32,28 @@ func main() {
 	kingpin.Version("0.0.1")
 	kingpin.Parse()
 
-	seq := 0
+	seq := 1
 	padding := buildLogLinePadding(int(*recordSize), *runID)
 
 	rate := time.Second / time.Duration(*rps)
 	throttle := time.Tick(rate)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(*duration))
+	defer cancel()
 	for {
-		<-throttle
-		fmt.Printf(logLine, time.Now().Format(timeFmt), *runID, seq, padding)
+		select {
+		case <-ctx.Done():
+			os.Exit(0)
+		case <-throttle:
+			fmt.Printf(logLine, time.Now().Format(timeFmt), *runID, seq, padding)
 
-		// We don't include the newline character in the size of the log record,
-		// because we expect that the logging driver (e.g. docker) will use this as
-		// the record delimiter.
-		fmt.Println()
+			// We don't include the newline character in the size of the log record,
+			// because we expect that the logging driver (e.g. docker) will use this as
+			// the record delimiter.
+			fmt.Println()
 
-		seq = (seq + 1) % maxSeq
+			seq = (seq + 1) % maxSeq
+		}
 	}
 
 }
