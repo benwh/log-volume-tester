@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -32,30 +31,35 @@ func main() {
 	kingpin.Version("0.0.1")
 	kingpin.Parse()
 
-	seq := 1
-	padding := buildLogLinePadding(int(*recordSize), *runID)
+	dataPadding := buildLogLinePadding(int(*recordSize), *runID)
 
 	rate := time.Second / time.Duration(*rps)
-	throttle := time.Tick(rate)
+	ticker := time.Tick(rate)
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(*duration))
 	defer cancel()
+
+	emitLoop(ctx, ticker, dataPadding)
+}
+
+func emitLoop(ctx context.Context, ticker <-chan time.Time, padding string) {
+	seq := 0
+
 	for {
 		select {
 		case <-ctx.Done():
-			os.Exit(0)
-		case <-throttle:
+			return
+		case <-ticker:
+			seq = (seq + 1) % maxSeq
+
 			fmt.Printf(logLine, time.Now().Format(timeFmt), *runID, seq, padding)
 
 			// We don't include the newline character in the size of the log record,
 			// because we expect that the logging driver (e.g. docker) will use this as
 			// the record delimiter.
 			fmt.Println()
-
-			seq = (seq + 1) % maxSeq
 		}
 	}
-
 }
 
 func buildLogLinePadding(desiredSize int, runID string) string {
