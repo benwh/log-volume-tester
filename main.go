@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	debug      = kingpin.Flag("debug", "Enable debug mode.").Bool()
+	runID      = kingpin.Flag("run-id", "Arbitrary string to identify the run, will be output as the run_id field").Default("test").String()
 	recordSize = kingpin.Flag("record-size", "Size of each log record").Default("1KiB").Bytes()
 	rps        = kingpin.Flag("records-per-second", "Number of log records per second to emit").Required().Int()
 	duration   = kingpin.Flag("duration", "Number of seconds to emit logs for").Default("10s").Duration()
@@ -17,13 +17,13 @@ var (
 
 const (
 	// Use an underscored field for data, to prevent it being analyzed in ES
-	logLine = `{"ts":"%s","seq":"%06d","_data":"%s"}`
+	logLine = `{"ts":"%s","run_id":"%s","seq":"%06d","_data":"%s"}`
 
 	// maxSeq should equal the maximum size of the seq field in the printf directive above, e.g. %06d -> 10^6
 	maxSeq = 1000000
 
 	// timeFmt is almost RFC3339Nano, but doesn't strip trailing zeros
-	timeFmt = `2006-01-02T15:04:05.000000-07:00`
+	timeFmt = `2006-01-02T15:04:05.000000000-07:00`
 )
 
 func main() {
@@ -31,13 +31,13 @@ func main() {
 	kingpin.Parse()
 
 	seq := 0
-	padding := buildLogLinePadding(int(*recordSize))
+	padding := buildLogLinePadding(int(*recordSize), *runID)
 
 	rate := time.Second / time.Duration(*rps)
 	throttle := time.Tick(rate)
 	for {
 		<-throttle
-		fmt.Printf(logLine, time.Now().Format(timeFmt), seq, padding)
+		fmt.Printf(logLine, time.Now().Format(timeFmt), *runID, seq, padding)
 
 		// We don't include the newline character in the size of the log record,
 		// because we expect that the logging driver (e.g. docker) will use this as
@@ -49,8 +49,8 @@ func main() {
 
 }
 
-func buildLogLinePadding(desiredSize int) string {
-	exampleLogLine := fmt.Sprintf(logLine, time.Now().Format(timeFmt), 1, "")
+func buildLogLinePadding(desiredSize int, runID string) string {
+	exampleLogLine := fmt.Sprintf(logLine, time.Now().Format(timeFmt), runID, 1, "")
 	size := len(exampleLogLine)
 
 	if size > desiredSize {
